@@ -14,3 +14,4 @@ joblib
 pandas-ta
 transformers
 torch
+feedparser

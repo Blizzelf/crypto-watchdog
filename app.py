@@ -18,7 +18,7 @@ import joblib
 from data import get_env_list, fetch_binance_klines, get_fear_and_greed_index
 from indicators import add_all_indicators
 from strategy import decide_signals_with_model, get_market_regime
-from backtester_engine import run_ai_backtest, calculate_metrics, render_equity_curve
+from backtester_engine import run_ai_backtest, calculate_metrics
 from interactive_chart import render_plotly_chart
 from chart import build_chart_caption, compute_trade_levels
 from advanced_news_ai import analyze_headlines_with_finbert
@@ -64,38 +64,14 @@ with st.sidebar:
 if auto_refresh:
     st_autorefresh(interval=refresh_sec * 1000, key="auto_refresher")
 
-# --- Ana Başlık ve Piyasa Durumu Paneli ---
+# --- Ana Başlık ve Piyasa Rejimi ---
 st.title("🐺 Crypto Watchdog")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    # Piyasa Rejimi Göstergesi
-    with st.spinner("Piyasa rejimi analiz ediliyor..."):
-        regime = get_market_regime()
-    regime_emoji = "🐂" if regime == "BULL" else ("🐻" if regime == "BEAR" else "↔️")
-    regime_text = tr_en("BOĞA PİYASASI", "BULL MARKET") if regime == "BULL" else (tr_en("AYI PİYASASI", "BEAR MARKET") if regime == "BEAR" else "NÖTR")
-    st.header(f"Genel Trend: {regime_emoji} {regime_text}")
-    st.caption("Bitcoin'in 200 günlük ortalamasına göre belirlenir.")
-
-with col2:
-    # Korku ve Açgözlülük Göstergesi
-    fng_data = get_fear_and_greed_index()
-    if fng_data:
-        score = fng_data["score"]
-        classification = fng_data["classification"]
-        if score < 25: fng_emoji = "😱"
-        elif score < 46: fng_emoji = "😨"
-        elif score < 55: fng_emoji = "😐"
-        elif score < 75: fng_emoji = "😀"
-        else: fng_emoji = "🤑"
-        st.header(f"Piyasa Psikolojisi: {fng_emoji} {classification}")
-        st.caption(f"Korku & Açgözlülük Endeksi: {score}/100")
-    else:
-        st.header("Piyasa Psikolojisi: ❔ Bilinmiyor")
-        st.caption("Korku & Açgözlülük Endeksi verisi alınamadı.")
-
-st.caption("Sinyaller bu iki ana göstergeye göre filtrelenmektedir.")
+with st.spinner("Piyasa rejimi analiz ediliyor... (BTC/1D)"):
+    regime = get_market_regime()
+regime_emoji = "🐂" if regime == "BULL" else ("🐻" if regime == "BEAR" else "↔️")
+regime_text = tr_en("BOĞA PİYASASI", "BULL MARKET") if regime == "BULL" else (tr_en("AYI PİYASASI", "BEAR MARKET") if regime == "BEAR" else "NÖTR")
+st.header(f"Genel Piyasa Durumu: {regime_emoji} {regime_text}")
+st.caption("Sinyaller bu genel trende göre filtrelenmektedir.")
 
 # --- Haber Akışı ---
 st.markdown("---")
@@ -182,41 +158,21 @@ for i, sym in enumerate(SYMBOLS):
             df_raw = fetch_binance_klines(sym, interval, 500)
             df_enriched = add_all_indicators(df_raw)
             if df_enriched.empty: st.warning(f"{sym} için veri hesaplanamadı."); continue
-
             sig, reason, metrics = decide_signals_with_model(df_enriched, model, market_regime=regime)
             st.subheader(f"{sym} — {badge(sig)}")
-
-            # --- YENİLENMİŞ "MİNİ DURUM RAPORU" ---
             macd_hist, momentum_emoji = metrics.get("macd_hist", 0.0), "🔼" if metrics.get("macd_hist", 0.0) > 0 else "🔽"
             momentum_text = "Pozitif" if metrics.get("macd_hist", 0.0) > 0 else "Negatif"
-            
             price = metrics.get("price", 1.0)
             atr_pct = (metrics.get("atr", 0.0) / price) * 100 if price > 0 else 0
             volatility_emoji = "🔥" if atr_pct > 2.0 else "💧"
             volatility_text = f"Yüksek ({atr_pct:.2f}%)" if atr_pct > 2.0 else f"Düşük ({atr_pct:.2f}%)"
-
-            # ---> YENİLİK: Sinyal Gücü satırını ekliyoruz
-            strength = metrics.get("strength", "N/A")
-            confidence = metrics.get("confidence", 0.0)
-            strength_emoji = "✅" if strength in ["Çok Güçlü", "Güçlü"] else "🤔"
-            strength_text = f"{strength} ({confidence:.0%})"
-
-            report = (
-                f"- **Fiyat:** `{metrics.get('price', 0.0):.6g}`\n"
-                f"- {momentum_emoji} **Momentum:** {momentum_text}\n"
-                f"- {volatility_emoji} **Volatilite:** {volatility_text}\n"
-                f"- {strength_emoji} **Sinyal Gücü:** {strength_text}\n" # YENİ SATIR
-                f"- 🎯 **Gerekçe:** {reason or '-'}"
-            )
+            report = f"- **Fiyat:** `{metrics.get('price', 0.0):.6g}`\n- {momentum_emoji} **Momentum:** {momentum_text}\n- {volatility_emoji} **Volatilite:** {volatility_text}\n- 🎯 **Gerekçe:** {reason or '-'}"
             st.markdown(report)
-            # --- SON ---
-
             plan = compute_trade_levels(df_enriched, sig)
             fig = render_plotly_chart(df_enriched.tail(bars), plan=plan, theme=theme)
             st.plotly_chart(fig, use_container_width=True)
             caption_text = build_chart_caption(sym, df_enriched, signal=sig, plan=plan, regime=regime)
             st.caption(caption_text)
-
         except Exception as e:
             st.error(f"{sym} işlenirken hata oluştu: {e}")
 
@@ -269,8 +225,8 @@ def create_portfolio_pie_chart(pf_df, usdt_balance):
     if not values: return None
     pull_values = [0.05 if v == max(values) else 0 for v in values]
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#2E8B57']
-    fig = go.Figure(data=[go.Pie(labels=labels, values=values, hole=.5, textinfo='percent', insidetextorientation='radial', pull=pull_values, marker_colors=colors, sort=False)])
-    fig.update_layout(showlegend=True, legend=dict(font=dict(color='white'), bgcolor='rgba(0,0,0,0)'), height=350, margin=dict(t=10, b=10, l=10, r=10), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='white'))
+    fig = go.Figure(data=[go.Pie(labels=labels, values=values, hole=.5, textinfo='percent', pull=pull_values, marker_colors=colors)])
+    fig.update_layout(showlegend=True, height=300, margin=dict(t=10, b=10, l=10, r=10), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='white'))
     return fig
     
 def analyze_portfolio(pf_df: pd.DataFrame, signals: dict) -> dict:
@@ -285,7 +241,7 @@ def analyze_portfolio(pf_df: pd.DataFrame, signals: dict) -> dict:
         perf_df = pf_df[pf_df['cost_basis'] > 0].copy()
         if not perf_df.empty:
             best_performer = perf_df.loc[perf_df['pnl_pct_standard'].idxmax()]
-            worst_performer = pf_df.loc[perf_df['pnl_pct_standard'].idxmin()]
+            worst_performer = perf_df.loc[perf_df['pnl_pct_standard'].idxmin()]
             insights["good"].append(f"**Portföyün Yıldızı:** `{best_performer['symbol']}` **%{best_performer['pnl_pct_standard']:.2f}** ile parlıyor.")
             if worst_performer['pnl_pct_standard'] < 0: insights["bad"].append(f"**Zayıf Halka:** `{worst_performer['symbol']}` **%{worst_performer['pnl_pct_standard']:.2f}** ile geride kalıyor.")
     held_assets = pf_df[pf_df['Toplam Adet'] > 0]['symbol'].tolist()
@@ -319,7 +275,7 @@ t_col1, t_col2, t_col3, t_col4 = st.columns([2, 2, 1.2, 0.8])
 with t_col1: t_type = st.radio("İşlem Tipi", ["Alım", "Satım"], horizontal=True, label_visibility="collapsed")
 with t_col2: t_sym = st.selectbox("Coin Seç", options=SYMBOLS, label_visibility="collapsed")
 with t_col3: t_amount = st.number_input("Adet", min_value=0.0, step=0.001, format="%.6f", label_visibility="collapsed")
-with t_col4:    
+with t_col4:   
     if st.button("Onayla", use_container_width=True):
         price = prices.get(t_sym, 0.0)
         if t_type == "Alım":
@@ -352,7 +308,7 @@ for col in ["İlk Alış Tarihi", "Son İşlem Tarihi"]:
         df_for_view[col] = pd.to_datetime(df_for_view[col], errors='coerce')
         df_for_view[col] = df_for_view[col].dt.strftime('%d/%m/%Y').replace('NaT', '')
 st.dataframe(df_for_view, column_order=["symbol", "Toplam Adet", "Birim Fiyat", "Toplam Değer", "Ort. Maliyet", "İlk Alış Fiyatı", "Kar / Zarar", "İlk Alış Tarihi", "Son İşlem Tarihi"],
-    column_config={"symbol": "🪙 Varlık", "Toplam Adet": "📦 Toplam Miktar", "Birim Fiyat": "💲 Anlık Fiyat", "Toplam Değer": "💰 Toplam Değer (USDT)", "Ort. Maliyet": "💲 Ortalama Alış Fiyatı", "İlk Alış Fiyatı": "📉 İlk Alış Fiyatı", "Kar / Zarar": "💸 Kâr / Zarar (USDT)", "İlk Alış Tarihi": st.column_config.TextColumn("🗓️ İlk Alım Tarihi"), "Son İşlem Tarihi": st.column_config.TextColumn("📅 Son İşlem Tarihi")},
+    column_config={"symbol": "₿ Coins", "Toplam Adet": "📦 Toplam Miktar", "Birim Fiyat": "💲 Anlık Fiyat", "Toplam Değer": "💰 Toplam Değer (USDT)", "Ort. Maliyet": "💲 Ortalama Alış Fiyatı", "İlk Alış Fiyatı": "📉 İlk Alış Fiyatı", "Kar / Zarar": "💸 Kâr / Zarar (USDT)", "İlk Alış Tarihi": st.column_config.TextColumn("🗓️ İlk Alım Tarihi"), "Son İşlem Tarihi": st.column_config.TextColumn("📅 Son İşlem Tarihi")},
     use_container_width=True, hide_index=True)
 if st.button("🗑️ Tüm İşlem Geçmişini Sıfırla", type="primary", use_container_width=True):
     save_transactions(pd.DataFrame(columns=["timestamp", "symbol", "type", "amount", "price"])); save_wallet(10000.0); st.rerun()
@@ -394,7 +350,7 @@ with col_dash_2:
             worst_performer = positions.loc[positions['pnl_pct_standard'].idxmin()]
             sub_col1, sub_col2 = st.columns(2)
             with sub_col1:
-                sub_col1.metric("Kâr Faktörü", f"{profit_factor:.2f}", help="Toplam kârın toplam zarara oranı. >1.5 ise iyi.")
+                sub_col1.metric("Profit Factor", f"{profit_factor:.2f}", help="Toplam kâr/zarar oranı. >1.5 iyi.")
                 sub_col1.metric("Portföyün Yıldızı ✨", f"{best_performer['symbol']}", f"{best_performer['pnl_pct_standard']:+.2f}%")
             with sub_col2:
                 sub_col2.metric("Karlı Pozisyon Oranı", f"{profitable_rate:.1f}%", help="Kârda olan pozisyonların yüzdesi.")
@@ -420,7 +376,7 @@ if not df_with_live_data.empty and 'Toplam Adet' in df_with_live_data.columns an
 else:
     st.info("Analiz için portföyde varlık bulunmalıdır.")
    
-# ================= Backtest Bölümü ==================  
+# ================= Backtest bölümünün ==================  
 st.markdown("---")
 st.header("🧪 Modern Backtest Motoru")
 _bt_symbols = sorted(set(SYMBOLS)) or ["BTCUSDT"]
@@ -441,33 +397,15 @@ if st.button("▶︎ Backtest Çalıştır", key="bt_run_new", use_container_wid
                 df_history = fetch_binance_klines(bt_sym, bt_interval, int(bt_limit))
                 regime_for_test = get_market_regime(symbol=bt_sym, timeframe=bt_interval)
                 st.info(f"Test periyodu için piyasa rejimi: **{regime_for_test}**")
-                
                 trades = run_ai_backtest(model, df_history, regime_for_test, bt_atr_multiplier, bt_rr_t1, bt_rr_t1 * 2)
-                
-                # ---> YENİLİK: Artık hem metrikleri hem de işlem verisini alıyoruz
-                metrics, df_trades = calculate_metrics(trades)
-                
+                metrics = calculate_metrics(trades)
                 st.success("Backtest tamamlandı!")
-                
-                # ---> YENİLİK: Sermaye Eğrisi Grafiğini Çizdiriyoruz
-                st.markdown("#### Performans Grafiği")
-                equity_fig = render_equity_curve(df_trades)
-                if equity_fig:
-                    st.plotly_chart(equity_fig, use_container_width=True)
-                else:
-                    st.info("Grafik çizimi için yeterli sayıda kapanmış işlem bulunamadı.")
-
-                st.markdown("#### Performans Metrikleri")
                 m1, m2, m3, m4 = st.columns(4)
                 m1.metric("İşlem Sayısı", f"{metrics.get('total_trades', 0)}")
                 m2.metric("Kazanma Oranı", f"{metrics.get('win_rate_pct', 0):.2f}%")
                 m3.metric("Profit Factor", f"{metrics.get('profit_factor', 0):.2f}")
                 m4.metric("Ort. %P/L", f"{metrics.get('average_pnl_pct', 0):.3f}%")
-                
-                if not df_trades.empty:
-                    st.markdown("#### İşlem Detayları")
-                    st.dataframe(df_trades, use_container_width=True)
-                    
+                if trades: st.dataframe(pd.DataFrame(trades), use_container_width=True)
             except Exception as e:
                 st.error(f"Backtest hatası: {e}")
 

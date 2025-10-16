@@ -1,0 +1,17 @@
+# Sanal ortam
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Hassas ve kişisel dosyalar
+.env
+transactions.csv
+wallet.json
+alarm_state.json
+
+# Diğer gereksiz dosyalar
+backtest_reports/
+*.log

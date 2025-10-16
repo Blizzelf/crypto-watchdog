@@ -1,0 +1,16 @@
+streamlit
+streamlit-autorefresh
+pandas
+numpy
+plotly
+requests
+beautifulsoup4
+schedule
+python-dotenv
+Pillow
+xgboost
+scikit-learn
+joblib
+pandas-ta
+transformers
+torch
